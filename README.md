@@ -40,6 +40,8 @@ frisk -h
 
 > ***Note:*** Default value is `.git,node_modules`, use `-i ""` to run without ignoring any files.
 
+`-c`, `--compact`: Print the output in a more horizontally compact way.
+
 ## Contribution
 
 Feel free to contribute anything you find valuable. The code is very simplistic.

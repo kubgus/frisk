@@ -63,7 +63,7 @@ enum terminal_colors {
     GREY_FG = 90,
 };
 
-std::string colorize(const std::string& text, std::vector<terminal_colors> options, bool reset = true) {
+inline std::string colorize(const std::string& text, std::vector<terminal_colors> options, bool reset = true) {
     std::string result = "\x1B[";
     for (auto option : options) result += ';' + std::to_string(option);
     result += 'm' + text;
@@ -71,20 +71,26 @@ std::string colorize(const std::string& text, std::vector<terminal_colors> optio
     return result;
 }
 
-std::string format(long long bytes) {
+inline std::string format(long long bytes) {
     const char* units[] = {"B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"};
     const int count = sizeof(units) / sizeof(units[0]);
     int index = 0;
     while (bytes >= 1024 && index < count - 1) {
         bytes /= 1024; index++;
     }
+
     std::ostringstream oss;
     oss << bytes << " " << units[index];
     return oss.str();
 }
 
-void print(const size_tree& base, int depth, std::vector<std::string> ignore, int indent = 0) {
+void print(const size_tree& base, int depth, std::vector<std::string> ignore, bool compact, int indent = 0, std::vector<bool> last = {}) {
     if (std::find(ignore.begin(), ignore.end(), base.path.filename()) != ignore.end()) return;
+
+    std::string prefix = indent > 0 ? std::string(2, ' ') : "";
+    for (int i = 1; indent > i; i++) prefix += last[i - 1] ? "   " : (compact ? "│ " : "│  ");
+    if (indent > 0) prefix += last[last.size() - 1] ? (compact ? "└ " : "└─ ") : (compact ? "├ " : "├─ ");
+
     std::vector<terminal_colors> path_color;
     if (base.is_directory) path_color = { BLUE_FG, BOLD_ON };
     else if (base.is_symlink) path_color = { CYAN_FG, BOLD_ON };
@@ -93,14 +99,19 @@ void print(const size_tree& base, int depth, std::vector<std::string> ignore, in
     else if (base.is_archive) path_color = { RED_FG, BOLD_ON };
     else if (base.has_error) path_color = { RED_FG, BLACK_BG };
     else path_color = { RESET };
-    std::cout << std::string(indent * 2, ' ') <<
-        colorize(base.path.filename().string() + (base.is_directory ? '/' : '\0'), path_color) <<
-        colorize(" - " + format(base.size), { RESET } ) <<
-        colorize(" (" + std::to_string(base.size) + " bytes)", { GREY_FG }) <<
-        std::endl;
-    if (depth == 0) return;
-    for (const size_tree& child : base.children)
-        print(child, depth - 1, ignore, indent + 1);
+
+    std::cout << colorize(prefix, { RESET }) << colorize(base.path.filename().string() + (base.is_directory ? '/' : '\0'), path_color) <<
+        colorize(" » " + format(base.size), { RESET } ) <<
+        colorize(" (" + std::to_string(base.size) + " bytes)", { GREY_FG }) << std::endl;
+
+    if (depth == 0 || !base.is_directory) return;
+
+    size_t count = base.children.size();
+    for (size_t i = 0; i < count; ++i) {
+        auto current_last = last;
+        current_last.push_back(i == count - 1);
+        print(base.children[i], depth - 1, ignore, compact, indent + 1, current_last);
+    }
 }
 
 int main(int argc, char** argv) {
@@ -115,6 +126,9 @@ int main(int argc, char** argv) {
     std::string ignore = ".git,node_modules";
     app.add_option("-i,--ignore", ignore, "Specify a comma-separated list of file/directory names to ignore when printing out the result.");
 
+    bool compact = false;
+    app.add_flag("-c,--compact", compact, "Print the output in a more horizontally compact way.");
+
     CLI11_PARSE(app, argc, argv);
 
     std::istringstream ss(ignore);
@@ -123,5 +137,5 @@ int main(int argc, char** argv) {
     std::vector<std::string> tokens;
     while (std::getline(ss, token, delimeter)) tokens.push_back(token);
 
-    print(iterate(path.c_str()), depth, tokens);
+    print(iterate(path.c_str()), depth, tokens, compact);
 }
