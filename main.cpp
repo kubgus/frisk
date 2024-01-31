@@ -83,7 +83,7 @@ std::string format(long long bytes) {
     return oss.str();
 }
 
-void print(const size_tree& base, std::vector<std::string> ignore, int indent = 0) {
+void print(const size_tree& base, int depth, std::vector<std::string> ignore, int indent = 0) {
     if (std::find(ignore.begin(), ignore.end(), base.path.filename()) != ignore.end()) return;
     std::vector<terminal_colors> path_color;
     if (base.is_directory) path_color = { BLUE_FG, BOLD_ON };
@@ -98,18 +98,22 @@ void print(const size_tree& base, std::vector<std::string> ignore, int indent = 
         colorize(" - " + format(base.size), { RESET } ) <<
         colorize(" (" + std::to_string(base.size) + " bytes)", { GREY_FG }) <<
         std::endl;
+    if (depth == 0) return;
     for (const size_tree& child : base.children)
-        print(child, ignore, indent + 1);
+        print(child, depth - 1, ignore, indent + 1);
 }
 
 int main(int argc, char** argv) {
     CLI::App app("General use directory size comparison and overview by @kubgus."); 
 
     std::string path = "./";
-    app.add_option("-p,--path", path, "Path to desired directory.");
+    app.add_option("-p,--path", path, "Specify the path to frisk. (defaults to current working directory)");
 
+    int depth = -1;
+    app.add_option("-d,--depth", depth, "Limit the frisk directory depth. (defaults to -1, meaning no limit)");
+    
     std::string ignore = ".git,node_modules";
-    app.add_option("-i,--ignore", ignore, "Paths to keep from displaying. (see docs)");
+    app.add_option("-i,--ignore", ignore, "Specify a comma-separated list of file/directory names to ignore when printing out the result.");
 
     CLI11_PARSE(app, argc, argv);
 
@@ -119,5 +123,5 @@ int main(int argc, char** argv) {
     std::vector<std::string> tokens;
     while (std::getline(ss, token, delimeter)) tokens.push_back(token);
 
-    print(iterate(path.c_str()), tokens);
+    print(iterate(path.c_str()), depth, tokens);
 }

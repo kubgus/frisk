@@ -34,9 +34,11 @@ frisk -h
 
 `-p`, `--path`: Specify the path to frisk. (defaults to current working directory)
 
+`-d`, `--depth`: Limit the frisk directory depth. (defaults to -1, meaning no limit)
+
 `-i`, `--ignore`: Specify a comma-separated list of file/directory names to ignore when printing out the result.
 
-> ***Note:*** Default value is `.git,node_modules`
+> ***Note:*** Default value is `.git,node_modules`, use `-i ""` to run without ignoring any files.
 
 ## Contribution
 
