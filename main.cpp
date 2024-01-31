@@ -1,8 +1,10 @@
+#include <filesystem>
+#include <fstream>
+#include <future>
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <fstream>
-#include <filesystem>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -22,35 +24,39 @@ struct size_tree {
 };
 
 size_tree iterate(std::filesystem::path path) {
-    size_tree result = { path };
-    for (const auto& entry : std::filesystem::directory_iterator(path)) {
-        try {
-            if (entry.is_directory()) {
-                size_tree child = iterate(entry.path());
-                result.children.push_back(child);
-                result.size += child.size;
-                continue;
+    std::vector<std::future<size_tree>> futures;
+    for (const auto& entry : std::filesystem::directory_iterator(path))
+        futures.push_back(std::async(std::launch::async, [entry] {            
+            try {
+                if (entry.is_directory()) return iterate(entry.path());
+                size_tree child = { entry.path(), entry.file_size(), {} };
+
+                if (entry.is_symlink()) child.is_symlink = true;
+                if (entry.is_regular_file() && (std::filesystem::status(child.path).permissions() & std::filesystem::perms::owner_exec) != std::filesystem::perms::none)
+                    child.is_executable = true;
+                std::string extension = child.path.extension().string();
+                const std::unordered_set<std::string> image = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"};
+                if (image.count(extension) > 0) child.is_graphical = true;
+                const std::unordered_set<std::string> archive = {".zip", ".tar", ".tar.gz", ".tar.bz2", ".rar", ".7z"};
+                if (archive.count(extension) > 0) child.is_archive = true;
+
+                return child;
+            } catch (const std::filesystem::filesystem_error& error) {
+                size_tree child = { entry.path(), 0, {} };
+                child.has_error = true;
+                return child;
             }
-            size_tree child = { entry.path(), entry.file_size(), {} };
+        }));
 
-            std::filesystem::file_status status = std::filesystem::status(child.path);
-            if (entry.is_symlink()) child.is_symlink = true;
-            if (entry.is_regular_file() && (status.permissions() & std::filesystem::perms::owner_exec) != std::filesystem::perms::none)
-                child.is_executable = true;
-            const std::unordered_set<std::string> image = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"};
-            if (image.count(child.path.extension().string()) > 0) child.is_graphical = true;
-            const std::unordered_set<std::string> archive = {".zip", ".tar", ".tar.gz", ".tar.bz2", ".rar", ".7z"};
-            if (archive.count(child.path.extension().string()) > 0) child.is_archive = true;
+    size_tree result = { path };
 
-            result.children.push_back(child);
-            result.size += entry.file_size();
-        } catch (const std::filesystem::filesystem_error& error) {
-            size_tree child = { entry.path(), 0, {} };
-            child.has_error = true;
-            result.children.push_back(child);
-        }
+    for (auto& future : futures) {
+        size_tree child = future.get();
+        result.children.emplace_back(std::move(child));
+        result.size += child.size;
     }
-    result.is_directory = result.children.size() > 0;
+
+    result.is_directory = !result.children.empty();
     return result;
 }
 
