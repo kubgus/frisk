@@ -21,37 +21,41 @@ struct size_tree {
     bool has_error = false;
 };
 
+inline size_tree handle(const std::filesystem::directory_entry& entry);
+
 size_tree iterate(std::filesystem::path path) {
     size_tree result = { path };
     for (const auto& entry : std::filesystem::directory_iterator(path)) {
-        try {
-            if (entry.is_directory()) {
-                size_tree child = iterate(entry.path());
-                result.children.push_back(child);
-                result.size += child.size;
-                continue;
-            }
-            size_tree child = { entry.path(), entry.file_size(), {} };
-
-            std::filesystem::file_status status = std::filesystem::status(child.path);
-            if (entry.is_symlink()) child.is_symlink = true;
-            if (entry.is_regular_file() && (status.permissions() & std::filesystem::perms::owner_exec) != std::filesystem::perms::none)
-                child.is_executable = true;
-            const std::unordered_set<std::string> image = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"};
-            if (image.count(child.path.extension().string()) > 0) child.is_graphical = true;
-            const std::unordered_set<std::string> archive = {".zip", ".tar", ".tar.gz", ".tar.bz2", ".rar", ".7z"};
-            if (archive.count(child.path.extension().string()) > 0) child.is_archive = true;
-
-            result.children.push_back(child);
-            result.size += entry.file_size();
-        } catch (const std::filesystem::filesystem_error& error) {
-            size_tree child = { entry.path(), 0, {} };
-            child.has_error = true;
-            result.children.push_back(child);
-        }
+        size_tree child = handle(entry);
+        result.children.push_back(child);
+        result.size += child.size;
     }
-    result.is_directory = result.children.size() > 0;
+    result.is_directory = !result.children.empty();
     return result;
+}
+
+inline size_tree handle(const std::filesystem::directory_entry& entry) {
+    try {
+        if (entry.is_directory()) return iterate(entry.path());
+
+        size_tree result = { entry.path(), entry.file_size(), {} };
+
+        if (entry.is_symlink()) result.is_symlink = true;
+        std::filesystem::file_status status = std::filesystem::status(result.path);
+        if (entry.is_regular_file() && (status.permissions() & std::filesystem::perms::owner_exec) != std::filesystem::perms::none)
+            result.is_executable = true;
+        std::string extension = result.path.extension().string();
+        const std::unordered_set<std::string> image = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"};
+        if (image.count(extension) > 0) result.is_graphical = true;
+        const std::unordered_set<std::string> archive = {".zip", ".tar", ".tar.gz", ".tar.bz2", ".rar", ".7z"};
+        if (archive.count(extension) > 0) result.is_archive = true;
+
+        return result;
+    } catch (const std::filesystem::filesystem_error& error) {
+        size_tree result = { entry.path(), 0, {} };
+        result.has_error = true;
+        return result;
+    }
 }
 
 enum terminal_colors {
