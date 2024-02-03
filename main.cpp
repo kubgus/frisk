@@ -25,12 +25,12 @@ inline size_tree handle(const std::filesystem::directory_entry& entry);
 
 size_tree iterate(std::filesystem::path path) {
     size_tree result = { path };
+    result.is_directory = true;
     for (const auto& entry : std::filesystem::directory_iterator(path)) {
         size_tree child = handle(entry);
         result.children.push_back(child);
         result.size += child.size;
     }
-    result.is_directory = !result.children.empty();
     return result;
 }
 
